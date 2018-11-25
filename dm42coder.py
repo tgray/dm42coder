@@ -1001,14 +1001,17 @@ def main(argv=None):
 
     description ="""Encodes programs for the DM42 calculator.
     
-    The calculator uses a superset of HP42S program commands.  By default, if the encoded program is writen to a file with the [-w] option, the raw file is written to the same location as the input file."""
+    The calculator uses a superset of HP42S program commands.  By default, if
+the encoded program is writen to a file with the [-w] option, the raw file is 
+written to the same location as the input file."""
     parser = argparse.ArgumentParser(description = description)
     parser.add_argument('--version', action='version',
         version='%(prog)s {}'.format(__version__))
 
     group1 = parser.add_argument_group('printing',
         'commands that print the processed program.')
-    group1.add_argument('-p', '--print', action="store_true", dest="print", help="Prints the file - prettified output", default=False)
+    group1.add_argument('-p', '--print', action="store_true", dest="print", 
+        help="Prints the file - prettified output", default=False)
 
     group1.add_argument('--hex', action="store_true",
         dest="hex", help="Prints encoded hex", default=False)
@@ -1018,7 +1021,9 @@ def main(argv=None):
         help="Prints encoded hex one command per line", default=False)
 
     group1.add_argument('-b', '--binary', action="store_true",
-        dest="binary", help="Prints encoded hex in binary - suitable for piping", default=False)
+        dest="binary", 
+        help="Prints encoded hex in binary - suitable for piping",
+        default=False)
 
 
     group2 = parser.add_argument_group('writing',
