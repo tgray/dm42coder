@@ -400,6 +400,11 @@ modops = [
     'STO-', 'STO÷', 'STO×', 'TONE', 'VARMENU', 'VIEW', 'X<>', 'XEQ', 'ΣREG',
     '|-' ]
 
+# all string ops are of the form
+# {length} {instruction} {string}
+# length is an Fx, where x is a hex digit from 1-14
+# the instruction is defined below
+# the string is encoded in hex
 strops = {
  '├': '7F',
  'CLP': 'F0',
@@ -434,6 +439,9 @@ strops = {
  'INTEG': 'B6',
  'SOLVE': 'B7'
 }
+stropsf = {}
+for i in strops:
+    stropsf[i] = '{length} ' + strops[i] + ' {string}'
 
 regops = {
  'ASTO': '9A',
@@ -463,8 +471,12 @@ regops = {
  'ΣREG': '99',
  'SIZE': 'F3 F7'
 }
+regopsf = {}
+for i in regops:
+    regopsf[i] = regops[i] + ' {loc}'
 
-shortregops = {'RCL': '2', 'STO': '3'}
+# shortregops = {'RCL': '2', 'STO': '3'}
+shortregops = {'RCL': '2{loc}', 'STO': '3{loc}'}
 
 # FIX, SCI, ENG 10 or 11
 # All use 'F1' command and then D5-7 or E5-7
@@ -475,12 +487,12 @@ shortregops = {'RCL': '2', 'STO': '3'}
 # ENG = 7
 # I'm putting this all in a dict so it is programmatically accessible
 dispops = {
-    'FIX': 5,
-    'SCI': 6,
-    'ENG': 7,
-    'op': 'F1',
-    10: 13,
-    11: 14
+    'FIX': '{:1x}'.format(5),
+    'SCI': '{:1x}'.format(6),
+    'ENG': '{:1x}'.format(7),
+    'op': 'F1 {loc}',
+    10: '{:1x}'.format(13),
+    11: '{:1x}'.format(14)
 }
 
 indregops0 = {
@@ -502,6 +514,9 @@ indregops0 = {
 indregops = regops.copy()
 indregops.update(indregops0)
 
+indregopsf = {}
+for i in indregops:
+    indregopsf[i] = indregops[i] + ' {loc}'
 
 indstrops = {
  'STO': '89',
@@ -543,23 +558,26 @@ indstrops = {
  'PGMINT': 'BC',
  'PGMSLV': 'BD',
  'INTEG': 'BE',
- 'SOLVE': 'BF'
+ 'SOLVE': 'BF',
 }
+indstropsf = {}
+for i in indstrops:
+    indstropsf[i] = '{length} ' + indstrops[i] + ' {string}'
 
 lblops = {
-    'LBL': 'CF', 
-    'GTO': 'D0 00', 
-    'XEQ': 'E0 00', 
-    'LBLstr': 'C0 00', 
-    'GTOstr': '1D', 
-    'XEQstr': '1E',
-    'GTOXEQind': 'AE',
+    'LBL': 'CF {loc}', 
+    'GTO': 'D0 00 {loc}', 
+    'XEQ': 'E0 00 {loc}', 
+    'LBLstr': 'C0 00 {length} 00 {string}', 
+    'GTOstr': '1D {length} {string}', 
+    'XEQstr': '1E {length} {string}',
+    'GTOXEQind': 'AE {loc}',
     'GTOind': 0, 
     'XEQind': 128,
     'GTOindST': 112, 
     'XEQindST': 240,
-    'GTOindstr': 'AE', 
-    'XEQindstr': 'AF'
+    'GTOindstr': '{length} AE {string}', 
+    'XEQindstr': '{length} AF {string}'
     }
 
 shortlblops = {
@@ -567,8 +585,11 @@ shortlblops = {
     'GTO': 177,  # 'B1'
     }
 
-shortlblsuffix = {
-    'GTO': '00', 
+shortlblops = {
+    'LBL': '{loc}', # '0'
+    'GTO': '{loc} 00',  # 'B1'
+    'LBLv': 1, # '0'
+    'GTOv': 177,  # 'B1'
     }
 
 toops = {
@@ -581,6 +602,22 @@ toops = {
  'KEYXEQindstr': 'CA',
  'KEYGTOindstr': 'CB'
     }
+
+otherops= {
+ 'ASSIGN': '{length} C0 {string} {loc}',
+}
+
+keyops = {
+ 'KEYXEQ': 'E2',
+ 'KEYGTO': 'E3',
+ 'KEYXEQstr': 'C2',
+ 'KEYGTOstr': 'C3',
+ 'KEYXEQindstr': 'CA',
+ 'KEYGTOindstr': 'CB'
+    }
+keyopsf = {}
+for i in keyops:
+    keyopsf[i] = '{length} ' + keyops[i] + ' {key} {loc}'
 
 commandtr = {
     # 41 commands
@@ -711,12 +748,13 @@ nminusre = re.compile(r'-')
 
 def locallblhex(lbl):
     if lbl.isupper():
-        loc = hex(ord(lbl) + 37)[2:]
+        loc = '{:02x}'.format(ord(lbl) + 37)
     else:
-        loc = hex(ord(lbl) + 26)[2:]
+        loc = '{:02x}'.format(ord(lbl) + 26)
     return loc
 
 def numtoraw(number):
+    # 16 + digit
     n = ndigitre.sub(r' 1\1', number)
     n = n.replace('.', ' 1A')
     n = nere.sub(r' 1B', n)
@@ -731,13 +769,24 @@ def strtoraw(st, f = True):
     l = len(st)
     if l > 15:
         st = st[:14]
+    print(st)
     if f:
-        # out = strlen(st) + binascii.hexlify(st.encode()).decode()
         out = strlen(st) + ''.join(['{:02x}'.format(chars[i]) for i in st])
     else:
-        # out = binascii.hexlify(st.encode()).decode()
         out = ''.join(['{:02x}'.format(chars[i]) for i in st])
     return out
+
+def strtoraw2(st, extra = 0):
+    l = len(st)
+    if l > 16:
+        st = st[:15]
+    length = hex(240 + len(st) + extra)[2:] 
+    encst = ''.join(['{:02x}'.format(chars[i]) for i in st])
+    d = {'length': length.upper(),
+        'string': encst,
+        'original': st,
+        'extra': extra}
+    return d
 
 def remove_lineno(lines):
     if bytere.match(lines[0]):
@@ -745,9 +794,6 @@ def remove_lineno(lines):
     if type(lines) == type(''):
         lines = lines.split("\n")
     return [linenore.sub('', line.strip()) for line in lines]
-
-# sub('({})'.format('|'.join(map(re.escape, replacements.keys()))), lambda m: replacements[m.group()], s)
-
 
 def translatechars(lines):
     out = []
@@ -784,7 +830,6 @@ def translatecmds(lines):
             out.append(line)
     return out
 
-
 def translatechars2(lines):
     tlines = []
     for l in lines:
@@ -793,164 +838,189 @@ def translatechars2(lines):
     #     tlines2.append(revertre.sub(lambda m: reverttr[m.group()], l))
     return tlines
 
-
 def tohex(lines):
     out = []
     for lineno, line in enumerate(lines):
+        d = {}
         if line in fixed.keys():
             out.append(fixed[line])
         elif strre.match(line):
-            out.append(strtoraw(line.strip('"')))
+            w = line.strip('"')
+            d = strtoraw2(w)
+            cmd = "{length} {string}".format(**d)
+            out.append(cmd)
         elif numberre.match(line):
             out.append(numtoraw(line))
         elif line[0] == "├":
             # concatenation string
             w = line[1:].strip('"')
-            o = strtoraw(w, 0)
-            l = strlen(w + ' ')
-            i = strops[line[0]]
-            out.append(l + i + o)
+            # o = strtoraw(w, 0)
+            # l = strlen(w + ' ')
+            # i = strops[line[0]]
+            # out.append(l + i + o)
+            cmd = stropsf[line[0]]
+            d = strtoraw2(w, 1)
+            out.append(cmd.format(**d))
         else:
             outwords = []
             words = line.split(" ")
             if words[0] in modops:
-                if words[0] in toops:
-                    if words[0] == 'ASSIGN':
-                        w = words[1].strip('"')
-                        o = strtoraw(w, 0)
-                        l = strlen(w + '  ')
-                        i = toops[words[0]]
-                        loc = '{:02x}'.format(int(words[3]) - 1)
-                        out.append(l + i + o + loc)
-                    else:
-                        reg = words[3]
-                        l = toops['KEY']
-                        if strre.match(reg):
-                            w = reg.strip('"')
-                            loc = strtoraw(w, 0)
-                            l = strlen(w + '  ')
-                            inst = toops[words[0]+words[2]+'str']
-                        elif regre.match(reg):
-                            loc = '{:02x}'.format(int(reg))
-                            inst = toops[words[0]+words[2]]
-                        elif reg in locallbl:
-                            inst = toops[words[0]+words[2]]
-                            loc = locallblhex(reg)
-                        elif reg == 'IND':
-                            if words[4] == 'ST':
-                                inst = toops[words[0]+words[2]]
-                                loc = 'F{}'.format(stacks[words[5]])
-                            elif regre.match(words[4]):
-                                inst = toops[words[0]+words[2]]
-                                loc = '{:02x}'.format(128 + int(words[4]))
-                            elif strre.match(words[4]):
-                                w = words[4].strip('"')
-                                loc = strtoraw(w, 0)
-                                l = strlen(w + '  ')
-                                inst = toops[words[0]+words[2]+'indstr']
-                        k = '{:02x}'.format(int(words[1]))
-                        out.append(l + inst + k + loc)
-                # first look for commands with a string as the argument
-                elif words[0] in strops and strre.match(words[1]):
+                if words[0] == 'ASSIGN':
                     w = words[1].strip('"')
-                    o = strtoraw(w, 0)
-                    l = strlen(w + ' ')
-                    i = strops[words[0]]
-                    out.append(l + i + o)
+                    # o = strtoraw(w, 0)
+                    # l = strlen(w + '  ')
+                    # i = toops[words[0]]
+                    # loc = '{:02x}'.format(int(words[3]) - 1)
+                    # out.append(l + i + o + loc)
+                    d = strtoraw2(w, 2)
+                    d['loc'] = '{:02x}'.format(int(words[3]) - 1)
+                    cmd = otherops[words[0]]
+                    out.append(cmd.format(**d))
+                if words[0] == 'KEY':
+                    reg = words[3]
+                    # l = toops['KEY']
+                    d['length'] = 'F3'
+                    if strre.match(reg):
+                        w = reg.strip('"')
+                        # loc = strtoraw(w, 0)
+                        # l = strlen(w + '  ')
+                        # inst = toops[words[0]+words[2]+'str']
+                        d = strtoraw2(w, 2)
+                        d['loc'] = d['string']
+                        cmd = keyopsf[words[0]+words[2]+'str']
+                    elif regre.match(reg):
+                        # loc = '{:02x}'.format(int(reg))
+                        # inst = toops[words[0]+words[2]]
+                        d['loc'] = '{:02x}'.format(int(reg))
+                        cmd = keyopsf[words[0]+words[2]]
+                    elif reg in locallbl:
+                        # inst = toops[words[0]+words[2]]
+                        # loc = locallblhex(reg)
+                        d['loc'] = locallblhex(reg)
+                        cmd = keyopsf[words[0]+words[2]]
+                    elif reg == 'IND':
+                        if words[4] == 'ST':
+                            # inst = toops[words[0]+words[2]]
+                            # loc = 'F{}'.format(stacks[words[5]])
+                            cmd = keyopsf[words[0]+words[2]]
+                            d['loc'] = 'F{}'.format(stacks[words[5]])
+                        elif regre.match(words[4]):
+                            # inst = toops[words[0]+words[2]]
+                            # loc = '{:02x}'.format(128 + int(words[4]))
+                            cmd = keyopsf[words[0]+words[2]]
+                            d['loc'] = '{:02x}'.format(128 + int(words[4]))
+                        elif strre.match(words[4]):
+                            w = words[4].strip('"')
+                            # loc = strtoraw(w, 0)
+                            # l = strlen(w + '  ')
+                            # inst = toops[words[0]+words[2]+'indstr']
+                            d = strtoraw2(w, 2)
+                            d['loc'] = d['string']
+                            cmd = keyopsf[words[0]+words[2]+'indstr']
+                    # k = '{:02x}'.format(int(words[1]))
+                    # out.append(l + inst + k + loc)
+                    d['key'] = '{:02x}'.format(int(words[1]))
+                    out.append(cmd.format(**d))
+                # first look for commands with a string as the argument
+                elif words[0] in stropsf and strre.match(words[1]):
+                    w = words[1].strip('"')
+                    # o = strtoraw(w, 0)
+                    # l = strlen(w + ' ')
+                    # i = strops[words[0]]
+                    # out.append(l + i + o)
+                    
+                    cmd = stropsf[words[0]]
+                    d = strtoraw2(w, 1)
+                    out.append(cmd.format(**d))
                 # look for numerical register operations
                 elif words[0] in regops and regre.match(words[1]):
                     num = int(words[1])
-                    numhex = '{:02x}'.format(num)
+                    d['loc'] = '{:02x}'.format(num)
+                    cmd = regopsf[words[0]]
                     if words[0] == 'SIZE':
-                        numhex = "{:02x}{:02x}".format(int(num/256), 
+                        d['loc'] = "{:02x}{:02x}".format(int(num/256), 
                             int(num % 256))
-                        out.append(regops[words[0]] + numhex)
                     elif num < 16 and words[0] in ['STO', 'RCL']:
-                        out.append(shortregops[words[0]] + numhex[1])
-                    else:
-                        out.append(regops[words[0]] + numhex)
+                        cmd = shortregops[words[0]]
+                        d['loc'] = '{:1x}'.format(num)
+                    out.append(cmd.format(**d))
                 # look for stack register operations
                 elif words[0] in regops and words[1] == 'ST':
-                    out.append(regops[words[0]] +
-                        '7{}'.format(stacks[words[2]]))
+                    cmd = regopsf[words[0]]
+                    d['loc'] = '7{}'.format(stacks[words[2]])
+                    out.append(cmd.format(**d))
                 # stack register operations without ST
                 elif words[0] in regops and words[1] in stacks:
-                    out.append(regops[words[0]] +
-                        '7{}'.format(stacks[words[1]]))
+                    cmd = regopsf[words[0]]
+                    d['loc'] = '7{}'.format(stacks[words[1]])
+                    out.append(cmd.format(**d))
                 # look for IND indirect register operations
                 elif words[0] in indregops and words[1] == 'IND':
+                    cmd = indregopsf[words[0]]
                     # look for a register number
                     if regre.match(words[2]):
                         num = int(words[2])
-                        numhex = hex(128 + num)[2:]
-                        out.append(indregops[words[0]] + numhex)
+                        d['loc'] = '{:02x}'.format(num + 128)
                     # look for a stack
                     elif words[2] == 'ST':
-                        out.append(indregops[words[0]] +
-                            'F{}'.format(stacks[words[3]]))
+                        d['loc'] = 'F{}'.format(stacks[words[3]])
                     # look for a string
                     elif strre.match(words[2]):
                         w = words[2].strip('"')
-                        o = strtoraw(w, 0)
-                        l = strlen(w + ' ')
-                        i = indstrops[words[0]]
-                        out.append(l + i + o)
+                        cmd = indstropsf[words[0]]
+                        d = strtoraw2(w, 1)
+                    out.append(cmd.format(**d))
                 # labels ops - GTO, XEQ, LBL, KEY
                 elif words[0] in lblops:
                     if regre.match(words[1]):
                         num = int(words[1])
                         # local short labels - < 16
                         if num < 15 and words[0] in shortlblops:
-                            numhex = '{:02x}'.format(shortlblops[words[0]] +
-                                num)
-                            op = numhex
-                            if words[0] in shortlblsuffix:
-                                op += shortlblsuffix[words[0]]
-                            out.append(op)
+                            num2 = shortlblops[words[0]+'v']
+                            d['loc'] = '{:02x}'.format(num2 + num)
+                            cmd = shortlblops[words[0]]
                         # local 'long' labels - > 15
                         else:
-                            numhex = '{:02x}'.format(num)
-                            out.append(lblops[words[0]] + numhex)
+                            cmd = lblops[words[0]]
+                            d['loc'] = '{:02x}'.format(num)
                     # local letter labels
                     # I don't like this but I'm not sure what the math was for
                     # local letter labels...
                     elif words[1] in locallbl:
-                        numhex = locallblhex(words[1])
-                        out.append(lblops[words[0]] + numhex)
+                        d['loc'] = locallblhex(words[1])
+                        cmd = lblops[words[0]]
+                        # out.append(lblops[words[0]] + numhex)
                     # string labels
                     elif strre.match(words[1]):
                         w = words[1].strip('"')
-                        o = strtoraw(w, 0)
-                        l = strlen(w)
-                        inst = lblops[words[0]+'str']
+                        cmd = lblops[words[0]+'str']
                         if words[0] == 'LBL':
-                            l = strlen(w + ' ') + '00'
-                        out.append(inst + l + o)
+                            d = strtoraw2(w, 1)
+                        else:
+                            d = strtoraw2(w)
                     # INDirect labels
                     elif words[1] == 'IND':
                         # string labels
-                        op = lblops['GTOXEQind']
+                        cmd = lblops['GTOXEQind']
                         if words[2] == 'ST':
-                            num = int(lblops[words[0] + 'indST']) + stacks[words[3]]
-                            out.append(op + '{:02x}'.format(num))
+                            num = lblops[words[0] + 'indST'] + stacks[words[3]]
+                            d['loc'] = '{:02x}'.format(num)
                         elif regre.match(words[2]):
-                            num = int(lblops[words[0] + 'ind']) + int(words[2])
-                            out.append(op + '{:02x}'.format(num))
+                            num = lblops[words[0] + 'ind'] + int(words[2])
+                            d['loc'] = '{:02x}'.format(num)
                         elif strre.match(words[2]):
                             w = words[2].strip('"')
-                            o = strtoraw(w, 0)
-                            l = strlen(w + ' ')
-                            inst = lblops[words[0]+'indstr']
-                            out.append(l + inst + o)
+                            d = strtoraw2(w, 1)
+                            cmd = lblops[words[0]+'indstr']
+                    out.append(cmd.format(**d))
                 elif words[0] in ['FIX', 'SCI', 'ENG', 'TONE']:
                     if int(words[1]) < 10:
-                        inst = indregops[words[0]]
-                        o = '{:02x}'.format(int(words[1]))
+                        cmd = indregopsf[words[0]]
+                        d['loc'] = '{:02x}'.format(int(words[1]))
                     elif int(words[1]) in [10, 11]:
-                        inst = dispops['op']
-                        o = '{:1x}{:1x}'.format(dispops[int(words[1])], 
-                            dispops[words[0]])
-                    out.append(inst + o)
+                        cmd = dispops['op']
+                        d['loc'] = dispops[int(words[1])] + dispops[words[0]]
+                    out.append(cmd.format(**d))
             else:
                 print("error - line no. {}: {}".format(lineno + 1,
                     ' '.join(words)))
@@ -1072,23 +1142,19 @@ def main(argv=None):
     # convert to hex values
     hexout = tohex(glines)
     # remove spaces in hex codes
-    hexout2 = [h.replace(' ', '') for h in hexout]
+    hexout2 = [h.replace(' ', '').upper() for h in hexout]
     # remove line breaks
     comphex = ''.join(hexout2)
     numbytes = int(len(comphex)/2 - 3)
     
     # prettify output
     plines = prettify_file(glines, numbytes)
-    if args.hex or args.hexlines:
-        args.print = True
     if args.print:
-        if args.hex:
-            if args.hexlines:
-                print('\n'.join(hexout2))
-            else:
-                print(comphex)
-        else:
-            print('\n'.join(plines))
+        print('\n'.join(plines))
+    elif args.hexlines:
+        print('\n'.join(hexout2))
+    elif args.hex:
+        print(comphex)
     if args.binary:
         sys.stdout.buffer.write(binascii.unhexlify(comphex))
 
