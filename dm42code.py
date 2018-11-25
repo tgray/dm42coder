@@ -963,17 +963,6 @@ def tohex(lines):
                     ' '.join(words)))
     return out
 
-def process_file(lines):
-    """Processes an input file to normalized commands and characters."""
-    # strip empty elements
-    lines = [x for x in lines if x != []]
-    lines2 = remove_lineno(lines)
-    lines3 = translatecmds(lines2)
-    lines4 = translatechars(lines3)
-    if lines4[-1] != 'END':
-        lines4.append('END')
-    return lines4
-
 def prettify_file(lines, numbytes):
     """'Prettifies' a program listing with line numbers and a byte count."""
     totallines = len(lines)
@@ -1040,7 +1029,7 @@ def main(argv=None):
     group2.add_argument('-w', '--write', dest="write", action='store_true',
         help="Write the output raw data to a file")
 
-    parser.add_argument('infile')
+    parser.add_argument('infile', help="input file name or '-' for stdin pipe")
     # parser.add_argument('outfile', nargs='?')
     args = parser.parse_args()
 
@@ -1055,7 +1044,7 @@ def main(argv=None):
     # translate inconsistent/HP41 commands
     lines2 = translatecmds(nonumlines)
     # translate special characters
-    glines = translatechars2(lines2)
+    glines = translatechars(lines2)
 
     # convert to hex values
     hexout = tohex(glines)
@@ -1065,21 +1054,19 @@ def main(argv=None):
     comphex = ''.join(hexout2)
     numbytes = int(len(comphex)/2 - 3)
     
+    if args.outfile:
+        args.write = True
+
     # prettify output
     plines = prettify_file(glines, numbytes)
-    if args.print:
-        print('\n'.join(plines))
-    elif args.hexlines:
+    if args.hexlines:
         print('\n'.join(hexout2))
     elif args.hex:
         print(comphex)
-    if args.binary:
+    elif args.binary:
         sys.stdout.buffer.write(binascii.unhexlify(comphex))
-
-    ofn = os.path.join(fn1, fn2a + '.raw')
-    if args.outfile:
-        args.write = True
-    if args.write:
+    elif args.write:
+        ofn = os.path.join(fn1, fn2a + '.raw')
         if not args.outfile:
             if args.infile == '-':
                 ofn = 'out.raw'
@@ -1095,6 +1082,8 @@ def main(argv=None):
         else:
             ofn = os.path.expanduser(args.outfile)
         write_raw(ofn, comphex)
+    else:
+        print('\n'.join(plines))
 
 
 if __name__ == "__main__":
