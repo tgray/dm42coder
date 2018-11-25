@@ -251,7 +251,6 @@ fixed = {"CLX": "77",
     "TIME": "A6 9C"
 }
 
-# ACCEL|LOCAT|HEADING
 chars = {
     '÷': 0,
     '×': 1,
@@ -619,6 +618,8 @@ keyopsf = {}
 for i in keyops:
     keyopsf[i] = '{length} ' + keyops[i] + ' {key} {loc}'
 
+
+# command translations
 commandtr = {
     # 41 commands
     'ST+' : 'STO+',
@@ -685,6 +686,7 @@ commandtr = {
     "ENTER^": "ENTER"
     }
 
+# escaped character sequences
 chartr = {
     r'\:-': "÷",
     r'\x': "×",
@@ -720,17 +722,7 @@ chartr = {
     r'\.': "•"
     }
 
-reverttr = {
-    "1÷X": "1/X"
-    }
-
-# stackre = re.compile(r'(STO)')
-
-# 'TONE', 'SIZE', 'ΣREG', 
-# 'ENG', 'FIX', 'SCI',
-# 'SF', 'CF', 'FC?', 'FC?C', 'FS?', 'FS?C',
-# 'KEY', 'KEY',
-
+# regexes
 bytere = re.compile(r'\d*\s*{\s*\d+-Byte Prgm\s}', re.I)
 linenore = re.compile(r'^[0-9]*▸?\s*')
 regre = re.compile(r'\d\d')
@@ -747,6 +739,7 @@ nere = re.compile(r'(ᴇ|e|E)')
 nminusre = re.compile(r'-')
 
 def locallblhex(lbl):
+    """Converts local labels (A-J, a-e) to hex."""
     if lbl.isupper():
         loc = '{:02x}'.format(ord(lbl) + 37)
     else:
@@ -754,6 +747,7 @@ def locallblhex(lbl):
     return loc
 
 def numtoraw(number):
+    """Converts numbers to FOCAL digits."""
     # 16 + digit
     n = ndigitre.sub(r' 1\1', number)
     n = n.replace('.', ' 1A')
@@ -762,25 +756,16 @@ def numtoraw(number):
     n = n + ' 00'
     return n
 
-def strlen(word):
-    return hex(240 + len(word))[2:] 
-
-def strtoraw(st, f = True):
-    l = len(st)
-    if l > 15:
-        st = st[:14]
-    print(st)
-    if f:
-        out = strlen(st) + ''.join(['{:02x}'.format(chars[i]) for i in st])
-    else:
-        out = ''.join(['{:02x}'.format(chars[i]) for i in st])
-    return out
-
-def strtoraw2(st, extra = 0):
+def strtoraw(st, extra = 0):
+    """Converts a string to FOCAL hex.
+    
+    Returns a dict with the original string, encoded string, encoded length,
+    and the number of extra characters to be added to the length
+    calculation."""
     l = len(st)
     if l > 16:
         st = st[:15]
-    length = hex(240 + len(st) + extra)[2:] 
+    length = '{:02x}'.format(240 + len(st) + extra)
     encst = ''.join(['{:02x}'.format(chars[i]) for i in st])
     d = {'length': length.upper(),
         'string': encst,
@@ -789,33 +774,15 @@ def strtoraw2(st, extra = 0):
     return d
 
 def remove_lineno(lines):
+    """Remove line numbers for input files."""
     if bytere.match(lines[0]):
         lines = lines[1:]
     if type(lines) == type(''):
         lines = lines.split("\n")
     return [linenore.sub('', line.strip()) for line in lines]
 
-def translatechars(lines):
-    out = []
-    for line in lines:
-        tmpline = []
-        for word in line.split(" "):
-            if word in chartr:
-                tmpline.append(chartr[word])
-            elif strre.match(word):
-                tmpword = []
-                for c in word.strip('"'):
-                    tmpline.append(chartr[c])
-                tmpline.append('"{}"'.format(tmpword))
-            else:
-                tmpline.append(word)
-        out.append(tmpline)
-    return out
-
-chartrre = re.compile('({})'.format('|'.join(map(re.escape, chartr.keys()))))
-revertre = re.compile('({})'.format('|'.join(map(re.escape, reverttr.keys()))))
-
 def translatecmds(lines):
+    """Translate commands to unified command set."""
     out = []
     for line in lines:
         words = line.split(' ')
@@ -830,15 +797,17 @@ def translatecmds(lines):
             out.append(line)
     return out
 
-def translatechars2(lines):
+chartrre = re.compile('({})'.format('|'.join(map(re.escape, chartr.keys()))))
+
+def translatechars(lines):
+    """Translate escaped characters to unified character set."""
     tlines = []
     for l in lines:
         tlines.append(chartrre.sub(lambda m: chartr[m.group()], l))
-    # for l in tlines:
-    #     tlines2.append(revertre.sub(lambda m: reverttr[m.group()], l))
     return tlines
 
 def tohex(lines):
+    """Convert the program listing."""
     out = []
     for lineno, line in enumerate(lines):
         d = {}
@@ -846,7 +815,7 @@ def tohex(lines):
             out.append(fixed[line])
         elif strre.match(line):
             w = line.strip('"')
-            d = strtoraw2(w)
+            d = strtoraw(w)
             cmd = "{length} {string}".format(**d)
             out.append(cmd)
         elif numberre.match(line):
@@ -854,12 +823,8 @@ def tohex(lines):
         elif line[0] == "├":
             # concatenation string
             w = line[1:].strip('"')
-            # o = strtoraw(w, 0)
-            # l = strlen(w + ' ')
-            # i = strops[line[0]]
-            # out.append(l + i + o)
             cmd = stropsf[line[0]]
-            d = strtoraw2(w, 1)
+            d = strtoraw(w, 1)
             out.append(cmd.format(**d))
         else:
             outwords = []
@@ -867,70 +832,43 @@ def tohex(lines):
             if words[0] in modops:
                 if words[0] == 'ASSIGN':
                     w = words[1].strip('"')
-                    # o = strtoraw(w, 0)
-                    # l = strlen(w + '  ')
-                    # i = toops[words[0]]
-                    # loc = '{:02x}'.format(int(words[3]) - 1)
-                    # out.append(l + i + o + loc)
-                    d = strtoraw2(w, 2)
+                    d = strtoraw(w, 2)
                     d['loc'] = '{:02x}'.format(int(words[3]) - 1)
                     cmd = otherops[words[0]]
                     out.append(cmd.format(**d))
                 if words[0] == 'KEY':
                     reg = words[3]
-                    # l = toops['KEY']
                     d['length'] = 'F3'
                     if strre.match(reg):
                         w = reg.strip('"')
-                        # loc = strtoraw(w, 0)
-                        # l = strlen(w + '  ')
-                        # inst = toops[words[0]+words[2]+'str']
-                        d = strtoraw2(w, 2)
+                        d = strtoraw(w, 2)
                         d['loc'] = d['string']
                         cmd = keyopsf[words[0]+words[2]+'str']
                     elif regre.match(reg):
-                        # loc = '{:02x}'.format(int(reg))
-                        # inst = toops[words[0]+words[2]]
                         d['loc'] = '{:02x}'.format(int(reg))
                         cmd = keyopsf[words[0]+words[2]]
                     elif reg in locallbl:
-                        # inst = toops[words[0]+words[2]]
-                        # loc = locallblhex(reg)
                         d['loc'] = locallblhex(reg)
                         cmd = keyopsf[words[0]+words[2]]
                     elif reg == 'IND':
                         if words[4] == 'ST':
-                            # inst = toops[words[0]+words[2]]
-                            # loc = 'F{}'.format(stacks[words[5]])
                             cmd = keyopsf[words[0]+words[2]]
                             d['loc'] = 'F{}'.format(stacks[words[5]])
                         elif regre.match(words[4]):
-                            # inst = toops[words[0]+words[2]]
-                            # loc = '{:02x}'.format(128 + int(words[4]))
                             cmd = keyopsf[words[0]+words[2]]
                             d['loc'] = '{:02x}'.format(128 + int(words[4]))
                         elif strre.match(words[4]):
                             w = words[4].strip('"')
-                            # loc = strtoraw(w, 0)
-                            # l = strlen(w + '  ')
-                            # inst = toops[words[0]+words[2]+'indstr']
-                            d = strtoraw2(w, 2)
+                            d = strtoraw(w, 2)
                             d['loc'] = d['string']
                             cmd = keyopsf[words[0]+words[2]+'indstr']
-                    # k = '{:02x}'.format(int(words[1]))
-                    # out.append(l + inst + k + loc)
                     d['key'] = '{:02x}'.format(int(words[1]))
                     out.append(cmd.format(**d))
                 # first look for commands with a string as the argument
                 elif words[0] in stropsf and strre.match(words[1]):
                     w = words[1].strip('"')
-                    # o = strtoraw(w, 0)
-                    # l = strlen(w + ' ')
-                    # i = strops[words[0]]
-                    # out.append(l + i + o)
-                    
                     cmd = stropsf[words[0]]
-                    d = strtoraw2(w, 1)
+                    d = strtoraw(w, 1)
                     out.append(cmd.format(**d))
                 # look for numerical register operations
                 elif words[0] in regops and regre.match(words[1]):
@@ -968,7 +906,7 @@ def tohex(lines):
                     elif strre.match(words[2]):
                         w = words[2].strip('"')
                         cmd = indstropsf[words[0]]
-                        d = strtoraw2(w, 1)
+                        d = strtoraw(w, 1)
                     out.append(cmd.format(**d))
                 # labels ops - GTO, XEQ, LBL, KEY
                 elif words[0] in lblops:
@@ -989,15 +927,14 @@ def tohex(lines):
                     elif words[1] in locallbl:
                         d['loc'] = locallblhex(words[1])
                         cmd = lblops[words[0]]
-                        # out.append(lblops[words[0]] + numhex)
                     # string labels
                     elif strre.match(words[1]):
                         w = words[1].strip('"')
                         cmd = lblops[words[0]+'str']
                         if words[0] == 'LBL':
-                            d = strtoraw2(w, 1)
+                            d = strtoraw(w, 1)
                         else:
-                            d = strtoraw2(w)
+                            d = strtoraw(w)
                     # INDirect labels
                     elif words[1] == 'IND':
                         # string labels
@@ -1010,7 +947,7 @@ def tohex(lines):
                             d['loc'] = '{:02x}'.format(num)
                         elif strre.match(words[2]):
                             w = words[2].strip('"')
-                            d = strtoraw2(w, 1)
+                            d = strtoraw(w, 1)
                             cmd = lblops[words[0]+'indstr']
                     out.append(cmd.format(**d))
                 elif words[0] in ['FIX', 'SCI', 'ENG', 'TONE']:
@@ -1024,21 +961,21 @@ def tohex(lines):
             else:
                 print("error - line no. {}: {}".format(lineno + 1,
                     ' '.join(words)))
-    # out = [fixed[i] for i in words]
-
     return out
 
 def process_file(lines):
+    """Processes an input file to normalized commands and characters."""
     # strip empty elements
     lines = [x for x in lines if x != []]
     lines2 = remove_lineno(lines)
     lines3 = translatecmds(lines2)
-    lines4 = translatechars2(lines3)
+    lines4 = translatechars(lines3)
     if lines4[-1] != 'END':
         lines4.append('END')
     return lines4
 
 def prettify_file(lines, numbytes):
+    """'Prettifies' a program listing with line numbers and a byte count."""
     totallines = len(lines)
     numdigits = len(str(totallines))
     if numdigits < 2:
@@ -1055,30 +992,19 @@ def prettify_file(lines, numbytes):
     return numlines
 
 def write_raw(ofn, hexout):
+    """Write an encoded program to a file."""
     with open(ofn, 'wb') as outf:
         outf.write(binascii.unhexlify(hexout))
 
-def print_raw(hexout, concat = False):
-    if concat:
-        delimiter = ''
-    else:
-        delimiter = '\n'
-    print(delimiter.join([h.upper() for h in hexout]))
-
-
-    hexout3 = ''.join(hexout2)
-    bytelength = int(len(hexout3)/2 - 3)
-    progstr = "{{ {}-Byte Prgm }}".format(bytelength)
-
 def read_file(fn):
-    # with open(fn) as f:
-    #     lines = f.readlines()
+    """Read a program from a file or standard in."""
     lines = [l for l in fileinput.input(fn)]
     lines = ''.join(lines).strip()
     lines = lines.split('\n')
     return lines
 
 def main(argv=None):
+    """Main program loop."""
 
     if argv is None:
         argv = sys.argv
@@ -1090,9 +1016,6 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description = description)
     parser.add_argument('--version', action='version',
         version='%(prog)s {}'.format(__version__))
-
-    # parser.add_argument('-t', '--test', action="store_true", dest="test", help="Prints the file renaming without actually renaming the files.",
-    #     default=False)
 
     group1 = parser.add_argument_group('printing',
         'commands that print the processed program.')
@@ -1120,11 +1043,6 @@ def main(argv=None):
     parser.add_argument('infile')
     # parser.add_argument('outfile', nargs='?')
     args = parser.parse_args()
-
-    # if not args.file:
-    #     parser.print_usage()
-    #     return 2	
-    # print(args.infile)
 
     lines = read_file(args.infile)
 
@@ -1177,7 +1095,6 @@ def main(argv=None):
         else:
             ofn = os.path.expanduser(args.outfile)
         write_raw(ofn, comphex)
-
 
 
 if __name__ == "__main__":
