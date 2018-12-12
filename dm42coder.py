@@ -263,6 +263,7 @@ chars = {
     '¿': 8,
     '≤': 9,
     '\\\[LF\\\]': 10, # for [LF]
+    '␊': 10, # for [LF]
     '≥': 11,
     '≠': 12,
     '↵': 13,
@@ -698,7 +699,9 @@ chartr = {
     r'\PI': "π",
     r'\?': "¿",
     r'\<=': "≤",
-    r'[LF]': "line feed",
+    # r'[LF]': "line feed",
+    # r'[LF]': "␊", # we should really use this character but the SM encoder
+    # does not so we won't
     r'\>=': "≥",
     r'\#': "≠",
     r'\</': "↵",
@@ -765,8 +768,9 @@ def strtoraw(st, extra = 0):
     l = len(st)
     if l > 16:
         st = st[:15]
-    length = '{:02x}'.format(240 + len(st) + extra)
-    encst = ''.join(['{:02x}'.format(chars[i]) for i in st])
+    st2 = st.replace('[LF]', "␊")
+    length = '{:02x}'.format(240 + len(st2) + extra)
+    encst = ''.join(['{:02x}'.format(chars[i]) for i in st2])
     d = {'length': length.upper(),
         'string': encst,
         'original': st,
